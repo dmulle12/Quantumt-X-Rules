@@ -1,8 +1,8 @@
 Quantumt-X-Rules
 
-Usage example (filter_remote)
+Usage Example (filter_remote)
 
-Proxy Policy is just an example policy group name, please replace it with the policy group name you actually use in Quantumult X.
+Proxy Policy is just an example policy group name. Replace it with the policy group name you actually use in Quantumult X.
 
 [filter_remote]
 https://raw.githubusercontent.com/dmulle12/Quantumt-X-Rules/release/ruleset/icloud.txt, tag=iCloud, force-policy=direct, update-interval=172800, opt-parser=false, enabled=true
