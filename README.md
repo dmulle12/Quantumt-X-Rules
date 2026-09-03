@@ -1,6 +1,6 @@
 Quantumt-X-Rules
 
-####### Usage Example (filter_remote)
+###### Usage Example (filter_remote)
 
 ###### Proxy Policy is just an example policy group name. Replace it with the policy group name you actually use in Quantumult X
 
