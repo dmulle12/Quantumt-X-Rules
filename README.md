@@ -13,4 +13,4 @@ https://raw.githubusercontent.com/dmulle12/Quantumt-X-Rules/release/ruleset/dire
 FILTER_LAN, tag=LAN, force-policy=direct, enabled=true
 FILTER_REGION, tag=CN, force-policy=direct, enabled=true
 ```
-##### Rules are automatically updated by GitHub Actions.
+> ##### Rules are automatically updated by GitHub Actions.
