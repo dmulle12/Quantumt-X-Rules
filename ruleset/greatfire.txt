@@ -1,0 +1,10 @@
+HOST-SUFFIX,applecensorship.com,PROXY
+HOST-SUFFIX,freebrowser.org,PROXY
+HOST-SUFFIX,freewechat.com,PROXY
+HOST-SUFFIX,freeweibo.com,PROXY
+HOST-SUFFIX,freezhihu.org,PROXY
+HOST-SUFFIX,googlecensorship.org,PROXY
+HOST-SUFFIX,greatfire.org,PROXY
+HOST-SUFFIX,greatfirevpn.com,PROXY
+HOST-SUFFIX,pao-pao.net,PROXY
+HOST-SUFFIX,wikiunblocked.org,PROXY
