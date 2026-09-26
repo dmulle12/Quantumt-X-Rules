@@ -13,6 +13,10 @@ on:
     paths-ignore:
       - "**/README.md"
 
+concurrency:
+  group: qx-rules-publish
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build
@@ -22,131 +26,153 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Set variables
-        run: |
-          echo "RELEASE_NAME=Released on $(date +%Y%m%d%H%M)" >> $GITHUB_ENV
-          echo "TAG_NAME=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
-
       - name: Prepare directories
-        run: |
-          mkdir -p ruleset
+        run: mkdir -p ruleset
 
       - name: Generate iCloud
         run: |
-          curl -sSL https://raw.githubusercontent.com/Loyalsoldier/domain-list-custom/release/icloud.txt \
-          | awk -F ':' '/^full:/ {printf "HOST,%s\n",$2} /^domain:/ {printf "HOST-SUFFIX,%s\n",$2}' \
-          > ruleset/icloud.txt
+          curl -fsSL https://raw.githubusercontent.com/Loyalsoldier/domain-list-custom/release/icloud.txt \
+            | awk -F ':' '/^full:/ {printf "HOST,%s\n",$2} /^domain:/ {printf "HOST-SUFFIX,%s\n",$2}' \
+            > ruleset/icloud.txt
+          test -s ruleset/icloud.txt
 
       - name: Generate Google
         run: |
-          curl -sSL https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/google.china.conf \
-          | perl -ne '/^server=\/([^\/]+)\// && print "HOST-SUFFIX,$1\n"' \
-          > ruleset/google.txt
+          curl -fsSL https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/google.china.conf \
+            | perl -ne '/^server=\/([^\/]+)\// && print "HOST-SUFFIX,$1\n"' \
+            > ruleset/google.txt
+          test -s ruleset/google.txt
 
       - name: Generate Apple
         run: |
-          curl -sSL https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/apple.china.conf \
-          | perl -ne '/^server=\/([^\/]+)\// && print "HOST-SUFFIX,$1\n"' \
-          > ruleset/apple.txt
+          curl -fsSL https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/apple.china.conf \
+            | perl -ne '/^server=\/([^\/]+)\// && print "HOST-SUFFIX,$1\n"' \
+            > ruleset/apple.txt
+          test -s ruleset/apple.txt
+
+      # Converts Loyalsoldier v2ray-rules-dat lines into Quantumult X filter rules:
+      #   full:example.com    -> HOST,example.com,<policy>
+      #   domain:example.com  -> HOST-SUFFIX,example.com,<policy>
+      #   plain-domain        -> HOST-SUFFIX,plain-domain,<policy>
+      #   regexp:...          -> HOST-REGEX,...,,<policy>
+      #   keyword:...         -> HOST-KEYWORD,...,,<policy>
+      # Anything else is reported to the log instead of being silently dropped.
 
       - name: Generate Direct
+        env:
+          QX_POLICY: direct
         run: |
-          curl -sSL https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt \
-          | grep -Ev "^(regexp|keyword):" \
-          | perl -ne '
-            /^(full:)([-_a-zA-Z0-9]+(\.[-_a-zA-Z0-9]+)*)/ &&
-              print "HOST,$2,DIRECT\n";
-            /^(domain:)?([-_a-zA-Z0-9]+(\.[-_a-zA-Z0-9]+)*)/ &&
-              print "HOST-SUFFIX,$2,DIRECT\n";
-          ' \
-          | sort -u > ruleset/direct.txt
+          curl -fsSL https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt \
+            | perl -ne '
+                $p = $ENV{QX_POLICY};
+                if    (/^full:(.+)/)   { print "HOST,$1,$p\n"; }
+                elsif (/^domain:(.+)/) { print "HOST-SUFFIX,$1,$p\n"; }
+                elsif (/^regexp:(.+)/) { $r = $1; $r =~ /,/ ? warn "skip comma regex: $r\n" : print "HOST-REGEX,$r,$p\n"; }
+                elsif (/^keyword:(.+)/){ print "HOST-KEYWORD,$1,$p\n"; }
+                elsif (/^([A-Za-z0-9_.\-]+)$/) { print "HOST-SUFFIX,$1,$p\n"; }
+                else { warn "unmatched line: $_"; }
+              ' \
+            | sort -u > ruleset/direct.txt
+          test -s ruleset/direct.txt
 
       - name: Generate Proxy
+        env:
+          QX_POLICY: proxy
         run: |
-          curl -sSL https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt \
-          | grep -Ev "^(regexp|keyword):" \
-          | perl -ne '
-            /^(full:)([-_a-zA-Z0-9]+(\.[-_a-zA-Z0-9]+)*)/ &&
-              print "HOST,$2,PROXY\n";
-            /^(domain:)?([-_a-zA-Z0-9]+(\.[-_a-zA-Z0-9]+)*)/ &&
-              print "HOST-SUFFIX,$2,PROXY\n";
-          ' \
-          | sort -u > ruleset/proxy.txt
+          curl -fsSL https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt \
+            | perl -ne '
+                $p = $ENV{QX_POLICY};
+                if    (/^full:(.+)/)   { print "HOST,$1,$p\n"; }
+                elsif (/^domain:(.+)/) { print "HOST-SUFFIX,$1,$p\n"; }
+                elsif (/^regexp:(.+)/) { $r = $1; $r =~ /,/ ? warn "skip comma regex: $r\n" : print "HOST-REGEX,$r,$p\n"; }
+                elsif (/^keyword:(.+)/){ print "HOST-KEYWORD,$1,$p\n"; }
+                elsif (/^([A-Za-z0-9_.\-]+)$/) { print "HOST-SUFFIX,$1,$p\n"; }
+                else { warn "unmatched line: $_"; }
+              ' \
+            | sort -u > ruleset/proxy.txt
+          test -s ruleset/proxy.txt
 
       - name: Generate Reject
+        env:
+          QX_POLICY: reject
         run: |
-          curl -sSL https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/reject-list.txt \
-          | grep -Ev "^(regexp|keyword):" \
-          | perl -ne '
-            /^(domain:|full:)?([-_a-zA-Z0-9]+(\.[-_a-zA-Z0-9]+)*)/ &&
-              print "HOST-SUFFIX,$2,REJECT\n";
-          ' \
-          | sort -u > ruleset/reject.txt
+          curl -fsSL https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/reject-list.txt \
+            | perl -ne '
+                $p = $ENV{QX_POLICY};
+                if    (/^full:(.+)/)   { print "HOST,$1,$p\n"; }
+                elsif (/^domain:(.+)/) { print "HOST-SUFFIX,$1,$p\n"; }
+                elsif (/^regexp:(.+)/) { $r = $1; $r =~ /,/ ? warn "skip comma regex: $r\n" : print "HOST-REGEX,$r,$p\n"; }
+                elsif (/^keyword:(.+)/){ print "HOST-KEYWORD,$1,$p\n"; }
+                elsif (/^([A-Za-z0-9_.\-]+)$/) { print "HOST-SUFFIX,$1,$p\n"; }
+                else { warn "unmatched line: $_"; }
+              ' \
+            | sort -u > ruleset/reject.txt
+          test -s ruleset/reject.txt
 
       - name: Generate Private
         run: |
-          curl -sSL https://raw.githubusercontent.com/Loyalsoldier/domain-list-custom/release/private.txt \
-          | awk -F ':' '
-            /^full:/ {printf "HOST,%s,DIRECT\n",$2}
-            /^domain:/ {printf "HOST-SUFFIX,%s,DIRECT\n",$2}
-          ' \
-          | sort -u > ruleset/private.txt
+          curl -fsSL https://raw.githubusercontent.com/Loyalsoldier/domain-list-custom/release/private.txt \
+            | awk -F ':' '
+                /^full:/   {printf "HOST,%s,direct\n",$2}
+                /^domain:/ {printf "HOST-SUFFIX,%s,direct\n",$2}
+              ' \
+            | sort -u > ruleset/private.txt
+          test -s ruleset/private.txt
 
       - name: Generate GFW
+        env:
+          QX_POLICY: proxy
         run: |
-          curl -sSL https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt \
-          | grep -Ev "^(regexp|keyword):" \
-          | perl -ne '
-            /^(domain:|full:)?([-_a-zA-Z0-9]+(\.[-_a-zA-Z0-9]+)*)/ &&
-              print "HOST-SUFFIX,$2,PROXY\n";
-          ' \
-          | sort -u > ruleset/gfw.txt
+          curl -fsSL https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt \
+            | perl -ne '
+                $p = $ENV{QX_POLICY};
+                if    (/^full:(.+)/)   { print "HOST,$1,$p\n"; }
+                elsif (/^domain:(.+)/) { print "HOST-SUFFIX,$1,$p\n"; }
+                elsif (/^regexp:(.+)/) { $r = $1; $r =~ /,/ ? warn "skip comma regex: $r\n" : print "HOST-REGEX,$r,$p\n"; }
+                elsif (/^keyword:(.+)/){ print "HOST-KEYWORD,$1,$p\n"; }
+                elsif (/^([A-Za-z0-9_.\-]+)$/) { print "HOST-SUFFIX,$1,$p\n"; }
+                else { warn "unmatched line: $_"; }
+              ' \
+            | sort -u > ruleset/gfw.txt
+          test -s ruleset/gfw.txt
 
       - name: Generate GreatFire
+        env:
+          QX_POLICY: proxy
         run: |
-          curl -sSL https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/greatfire.txt \
-          | grep -Ev "^(regexp|keyword):" \
-          | perl -ne '
-            /^(domain:|full:)?([-_a-zA-Z0-9]+(\.[-_a-zA-Z0-9]+)*)/ &&
-              print "HOST-SUFFIX,$2,PROXY\n";
-          ' \
-          | sort -u > ruleset/greatfire.txt
+          curl -fsSL https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/greatfire.txt \
+            | perl -ne '
+                $p = $ENV{QX_POLICY};
+                if    (/^full:(.+)/)   { print "HOST,$1,$p\n"; }
+                elsif (/^domain:(.+)/) { print "HOST-SUFFIX,$1,$p\n"; }
+                elsif (/^regexp:(.+)/) { $r = $1; $r =~ /,/ ? warn "skip comma regex: $r\n" : print "HOST-REGEX,$r,$p\n"; }
+                elsif (/^keyword:(.+)/){ print "HOST-KEYWORD,$1,$p\n"; }
+                elsif (/^([A-Za-z0-9_.\-]+)$/) { print "HOST-SUFFIX,$1,$p\n"; }
+                else { warn "unmatched line: $_"; }
+              ' \
+            | sort -u > ruleset/greatfire.txt
+          test -s ruleset/greatfire.txt
 
       - name: Generate TLD not CN
         run: |
-          curl -sSL https://raw.githubusercontent.com/Loyalsoldier/domain-list-custom/release/tld-!cn.txt \
-          | awk -F ':' '/^domain:/ {printf "HOST-SUFFIX,%s,PROXY\n",$2}' \
-          | sort -u > ruleset/tld-not-cn.txt
+          curl -fsSL https://raw.githubusercontent.com/Loyalsoldier/domain-list-custom/release/tld-!cn.txt \
+            | awk -F ':' '/^domain:/ {printf "HOST-SUFFIX,%s,proxy\n",$2}' \
+            | sort -u > ruleset/tld-not-cn.txt
+          test -s ruleset/tld-not-cn.txt
 
       - name: Generate China CIDR
         run: |
-          curl -sSL https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/cn.txt \
-          | perl -ne '
-            /^(\d{1,3}(\.\d{1,3}){3}\/\d{1,2})/ &&
-              print "IP-CIDR,$1,DIRECT\n";
-          ' > ruleset/cncidr.txt
-
-          curl -sSL https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/cn.txt \
-          | grep ":" \
-          | perl -ne '
-            /(.+\/\d+)/ &&
-              print "IP-CIDR6,$1,DIRECT\n";
-          ' >> ruleset/cncidr.txt
+          curl -fsSL https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/cn.txt -o /tmp/cn.txt
+          perl -ne '/^(\d{1,3}(\.\d{1,3}){3}\/\d{1,2})/ && print "IP-CIDR,$1,direct\n"' /tmp/cn.txt > ruleset/cncidr.txt
+          grep ":" /tmp/cn.txt | perl -ne '/(.+\/\d+)/ && print "IP-CIDR6,$1,direct\n"' >> ruleset/cncidr.txt
+          test -s ruleset/cncidr.txt
 
       - name: Generate Telegram CIDR
         run: |
-          curl -sSL https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/telegram.txt \
-          | perl -ne '
-            /^(\d{1,3}(\.\d{1,3}){3}\/\d{1,2})/ &&
-              print "IP-CIDR,$1,PROXY\n";
-          ' > ruleset/telegramcidr.txt
-
-          curl -sSL https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/telegram.txt \
-          | grep ":" \
-          | perl -ne '
-            /(.+\/\d+)/ &&
-              print "IP-CIDR6,$1,PROXY\n";
-          ' >> ruleset/telegramcidr.txt
+          curl -fsSL https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/telegram.txt -o /tmp/telegram.txt
+          perl -ne '/^(\d{1,3}(\.\d{1,3}){3}\/\d{1,2})/ && print "IP-CIDR,$1,proxy\n"' /tmp/telegram.txt > ruleset/telegramcidr.txt
+          grep ":" /tmp/telegram.txt | perl -ne '/(.+\/\d+)/ && print "IP-CIDR6,$1,proxy\n"' >> ruleset/telegramcidr.txt
+          test -s ruleset/telegramcidr.txt
 
       - name: Clean rules
         run: |
@@ -165,43 +191,26 @@ jobs:
             head -n 5 "$file"
           done
 
-      - name: Prepare publish directory
-        run: |
-          mkdir -p publish
-          cp -r ruleset publish/
-
-      - name: Release
-        uses: softprops/action-gh-release@v3
-        with:
-          name: ${{ env.RELEASE_NAME }}
-          tag_name: ${{ env.TAG_NAME }}
-          draft: false
-          prerelease: false
-          files: |
-            publish/ruleset/*
+      - name: Push release branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push release branch
         run: |
+          mkdir -p publish/ruleset
+          cp ruleset/*.txt publish/ruleset/
+
           cd publish
-
           git init
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b release
           git add .
-          git commit -m "${{ env.RELEASE_NAME }}"
-
-          git remote add origin \
-            "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
-
-          git push -f -u origin release
+          git commit -m "Released on $(date -u +%Y%m%d%H%M)"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin release
 
       - name: Purge jsDelivr
         run: |
           for file in ruleset/*.txt; do
             name=$(basename "$file")
-            curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@release/ruleset/$name"
+            curl -fsSL "https://purge.jsdelivr.net/gh/${{ github.repository }}@release/ruleset/$name" -o /dev/null
           done
